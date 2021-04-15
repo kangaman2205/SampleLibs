@@ -1,0 +1,136 @@
+plugins {
+    id 'com.android.library'
+    id 'maven-publish'
+}
+
+/* Artifactory posting Settings */
+def distributionType = "\"develop\""
+def branchNumPadding = 100000
+def addRevCountToName = true
+def useLocalRepo = true
+def branchBuildNum = 100
+def versionMajor = 1
+def versionMinor = 1
+def versionPatch = 0
+
+android {
+    compileSdkVersion 30
+    buildToolsVersion "30.0.3"
+
+    defaultConfig {
+        minSdkVersion 21
+        targetSdkVersion 30
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        externalNativeBuild {
+            cmake {
+                cppFlags ""
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.10.2"
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+
+    implementation 'androidx.appcompat:appcompat:1.2.0'
+    implementation 'com.google.android.material:material:1.3.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
+    testImplementation 'junit:junit:4.+'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.2'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.3.0'
+}
+
+def mavenPackage = 'com.sampleLib'
+def mavenVersion = generateMavenVersionName(distributionType, useLocalRepo, addRevCountToName, branchBuildNum, versionMajor, versionMinor, versionPatch)
+def mavenArtifactId = project.getName()
+
+/* Method to generate maven version name */
+String generateMavenVersionName(
+        String distributionType, boolean useLocalRepo, boolean addRevCountToName, int branchBuildNum,
+        int versionMajor, int versionMinor, int versionPatch)
+{
+    String versionSuffix = "";
+    if (addRevCountToName) {
+        versionSuffix = versionSuffix.concat("-" + branchBuildNum);
+    }
+
+    if (distributionType == "\"store\"") {
+        versionSuffix = versionSuffix.concat("-release")
+    } else if (distributionType == "\"adhoc\"") {
+        versionSuffix = versionSuffix.concat("-adhoc")
+    }
+    if(useLocalRepo)
+    {
+        versionSuffix = versionSuffix.concat("-SNAPSHOT")
+    }
+
+    def mavenVersion = generateVersionName(versionMajor, versionMinor, versionPatch) + versionSuffix
+    println( "Maven version : " + mavenVersion)
+    return mavenVersion
+}
+
+
+private String generateVersionName(int versionMajor, int versionMinor, int versionPatch)
+{
+    String versionName = "${versionMajor}.${versionMinor}.${versionPatch}"
+    return versionName
+}
+
+/****************************************
+ * PUBLISHING .AAR FILE IN MAVEN         *
+ *****************************************/
+publishing {
+    publications {
+        aar(MavenPublication) {
+            groupId mavenPackage
+            version = mavenVersion
+            artifactId mavenArtifactId
+
+            printf("\n========= ARTIFACT INFORMATION ========="
+                    + "\n* groupId: " + mavenPackage
+                    + "\n* version: " + mavenVersion
+                    + "\n* artifactId: " + mavenArtifactId
+                    + "\n=======================================\n");
+
+            afterEvaluate {
+                artifact bundleReleaseAar
+            }
+
+            pom.withXml {
+                def dependencies = asNode().appendNode('dependencies')
+
+                printf("\n========= ALL DEPENDENCIES =========");
+                // add all compile dependencies to the pom file
+                configurations.compile.allDependencies.each {
+                    if (it.version != null && !it.version.isEmpty() && !it.version.equals("unspecified")) {
+                        def dependency = dependencies.appendNode('dependency')
+                        dependency.appendNode('groupId', it.group)
+                        dependency.appendNode('artifactId', it.name)
+                        dependency.appendNode('version', it.version)
+                    }
+                    // note: dependency exclusions aren't handled here
+                }
+            }
+        }
+    }
+}
